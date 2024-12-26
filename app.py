@@ -1,26 +1,142 @@
-from flask import Flask, render_template, request, redirect
-from repositories.studentsRepository import StudentsRepository
+import bcrypt
 from models.database import db
+from models.user import Student,user_course,Admin
+from models.course import Course
+from models.grade import Grade
+from models.database import db
+from flask import make_response
+from models.user import User, Student
+from flask import Flask, render_template, request, redirect
+
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///project.db"
-# initialize the app with the extension
 db.init_app(app)
 
-StudentsRepo = StudentsRepository()
+with app.app_context():
+    db.create_all()
+    if not User.query.filter_by(email='admin@example.com').first():
+        hashed_password = bcrypt.hashpw('1234'.encode('utf-8'), bcrypt.gensalt())
+        admin_user = Admin(
+            name='admin',
+            email='admin@example.com',
+            password=hashed_password.decode('utf-8'),
+            department='Administration',
+            access_level=5
+        )
+        db.session.add(admin_user)
+        db.session.commit()
 
-# Homepage to view students
-@app.route('/')
-def index():
-    users = db.session.execute(db.select(User).order_by(User.username)).scalars()
-    return render_template('index.html', students=StudentsRepo.students)
+@app.route('/login',methods=["GET"])
+def render_login():
+    return render_template("login.html")
+
+@app.route('/login', methods=["POST"])
+def login(): 
+    email = request.form.get('email')
+    password = request.form.get('password')
+    user = User.query.filter_by(email=email).first()
+
+    if user and bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
+        if isinstance(user, Student):
+            response = make_response(redirect('/students/{}'.format(user.id)))
+            response.set_cookie('student_id', str(user.id))
+            return response
+        else:
+            return redirect('/admin')
+    else:
+        return "Invalid email or password", 401
+
+## todo; isAdmin() decorator.
+@app.route('/admin')
+def admin():
+    # Get all students
+    students = Student.query.all()
     
-# Add a new student
+    # Get course enrollment counts
+    course_enrollment_counts = db.session.query(
+        Course.name, 
+        db.func.count(user_course.c.user_id).label('enrollment_count')  # Changed label to match template
+    ).outerjoin(  # Changed to outerjoin to show courses with 0 students
+        user_course
+    ).group_by(
+        Course.id,  # Added Course.id to group by
+        Course.name
+    ).all() 
+
+    # Get all courses for the add student form
+    courses = Course.query.all()
+    
+    return render_template('admin.html', 
+                         students=students,
+                         course_enrollment_counts=course_enrollment_counts,
+                         courses=courses)
+    
 @app.route('/add-student', methods=['POST'])
 def add_student():
-    StudentsRepo.add(request.form['name'],request.form['student_id'],request.form['course_ids'])
-    return redirect('/')
+    name = request.form['name']
+    email = request.form['email']
+    password = bcrypt.hashpw(request.form['password'].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    course_ids = request.form.getlist('course_ids')
+
+    new_student = Student(name=name, email=email, password=password)
+    db.session.add(new_student)
+    db.session.commit()
+
+    for course_id in course_ids:
+        course = Course.query.get(course_id)
+        if course:
+            new_student.courses.append(course)
+
+    db.session.commit()
+    return redirect('/admin')
+
+@app.route('/add-course', methods=['POST'])
+def add_course():
+    new_course = Course(name=request.form['name'])
+    db.session.add(new_course)
+    db.session.commit()
+    return redirect('/admin')
+
+@app.route('/add-grade',methods=['POST'])
+def add_grade():
+    course_id = request.form['course_id']
+    student_id = request.form['student_id']
+    grade_value = request.form['grade']
+
+    new_grade = Grade(
+        course_id=course_id,
+        student_id=student_id,
+        grade=grade_value
+    )
+
+    db.session.add(new_grade)
+    db.session.commit()
+    return redirect('/admin')
+
+@app.route('/students/<int:student_id>/profile')
+def show_student_profile(student_id):
+    grades = db.session.query(
+        Course.name,
+        Grade.grade
+    ).join(
+        Grade, Grade.course_id == Course.id
+    ).filter(
+        Grade.student_id == student_id
+    ).all() # {course_name,grade}[]
+
+    ## should see option to enroll student [dropdown and enrolled in]
+    ## should see option to add a grade next to the course in the grade list
+    ## should see a grade list
+    return render_template('student.html',grades=grades)
 
 
-# Run the application
+@app.route('/courses/search', methods=['GET'])
+def course_search():
+    search_query = request.args.get('q', '')
+    courses = Course.query.filter(Course.name.ilike(f'%{search_query}%')).all()
+
+    ## should see a list for search
+    return render_template('course_search.html',courses=courses)
+
 if __name__ == '__main__':
     app.run(debug=True)

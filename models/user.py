@@ -1,12 +1,13 @@
-from sqlalchemy import Integer, String, Table, ForeignKey
+from .database import db
+from sqlalchemy import Integer, String, Table, ForeignKey, Column
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 # Association table remains the same but renamed for clarity
 user_course = Table(
     "user_course",
     db.Model.metadata,
-    mapped_column("user_id", ForeignKey("user.id"), primary_key=True),
-    mapped_column("course_id", ForeignKey("course.id"), primary_key=True),
+    Column("user_id", ForeignKey("user.id"), primary_key=True),
+    Column("course_id", ForeignKey("course.id"), primary_key=True),
 )
 
 class User(db.Model):
@@ -18,6 +19,9 @@ class User(db.Model):
     user_type: Mapped[str] = mapped_column()
     password: Mapped[str] = mapped_column()
     
+    # Move grades relationship to base User class
+    grades: Mapped[list["Grade"]] = relationship(back_populates="student")
+    
     __mapper_args__ = {
         'polymorphic_identity': 'user',
         'polymorphic_on': user_type
@@ -28,12 +32,11 @@ class Student(User):
         'polymorphic_identity': 'student'
     }
     
-    # Student-specific relationships
+    # Student-specific relationships - only courses remains here
     courses: Mapped[list["Course"]] = relationship(
         secondary=user_course,
         back_populates="students"
     )
-    grades: Mapped[list["Grade"]] = relationship(back_populates="student")
 
 class Admin(User):
     __mapper_args__ = {
