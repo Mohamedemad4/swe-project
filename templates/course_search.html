@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Course Search</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <h1 class="text-center mb-4">Course Search</h1>
+
+                <!-- Search Form -->
+                <form action="{{ url_for('course_search') }}" method="GET" class="mb-4">
+                    <div class="input-group">
+                        <input type="text" 
+                               name="q" 
+                               class="form-control" 
+                               value="{{ request.args.get('q', '') }}" 
+                               placeholder="Search for courses..."
+                               aria-label="Search for courses">
+                        <button class="btn btn-primary" type="submit">
+                            <i class="bi bi-search"></i> Search
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Results Section -->
+                {% if courses %}
+                    <div class="card">
+                        <div class="card-header bg-primary text-white">
+                            <h2 class="h5 mb-0">Search Results</h2>
+                        </div>
+                        <ul class="list-group list-group-flush">
+                            {% for course in courses %}
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h3 class="h5 mb-1">{{ course.name }}</h3>
+                                        {% if course.students|length > 0 %}
+                                            <small class="text-muted">
+                                                {{ course.students|length }} student{{ 's' if course.students|length != 1 else '' }} enrolled
+                                            </small>
+                                        {% else %}
+                                            <small class="text-muted">No students enrolled</small>
+                                        {% endif %}
+                                    </div>
+                                    {% if session.get('student_id') %}
+                                        <form action="{{ url_for('enroll_course', course_id=course.id) }}" method="POST">
+                                            <button type="submit" class="btn btn-outline-primary btn-sm">
+                                                <i class="bi bi-plus-circle"></i> Enroll
+                                            </button>
+                                        </form>
+                                    {% endif %}
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% elif request.args.get('q') %}
+                    <div class="alert alert-info" role="alert">
+                        <i class="bi bi-info-circle"></i> No courses found matching your search.
+                    </div>
+                {% endif %}
+
+                <!-- Navigation -->
+                <div class="mt-4">
+                    {% if session.get('student_id') %}
+                        <a href="{{ url_for('student_dashboard') }}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left"></i> Back to Dashboard
+                        </a>
+                    {% else %}
+                        <a href="{{ url_for('admin') }}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left"></i> Back to Admin
+                        </a>
+                    {% endif %}
+                </div>
+
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }} mt-3" role="alert">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
